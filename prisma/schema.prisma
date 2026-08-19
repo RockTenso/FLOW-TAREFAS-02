@@ -1,0 +1,190 @@
+// TaskFlow — schema Prisma
+// Banco: PostgreSQL (via Docker Compose)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum Importance {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum HistoryAction {
+  TASK_CREATED
+  TASK_UPDATED
+  TITLE_CHANGED
+  DESCRIPTION_CHANGED
+  DUE_DATE_CHANGED
+  IMPORTANCE_CHANGED
+  STATUS_CHANGED
+  RESPONSIBLE_CHANGED
+  DEPARTMENT_CHANGED
+  CLIENT_CHANGED
+  ESTIMATE_CHANGED
+  TAG_ADDED
+  TAG_REMOVED
+  TASK_STARTED
+  TASK_PAUSED
+  TASK_RESUMED
+  TASK_COMPLETED
+  TASK_CANCELLED
+  COMMENT_ADDED
+}
+
+// ----------------------------------------------------------------------------
+// Entidades
+// ----------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdTasks     Task[]        @relation("TaskCreatedBy")
+  responsibleTasks Task[]        @relation("TaskResponsible")
+  timeEntries      TimeEntry[]
+  histories        TaskHistory[]
+  comments         Comment[]
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks Task[]
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks Task[]
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  tasks Task[] @relation("TaskTags")
+}
+
+model Task {
+  id               String      @id @default(cuid())
+  taskCode         String      @unique
+  title            String
+  description      String?
+  status           TaskStatus  @default(TODO)
+  importance       Importance  @default(MEDIUM)
+  dueDate          DateTime?
+  estimatedMinutes Int?
+  createdById      String
+  responsibleId    String?
+  departmentId     String?
+  clientId         String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  completedAt      DateTime?
+  deletedAt        DateTime?
+
+  createdBy   User        @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  responsible User?       @relation("TaskResponsible", fields: [responsibleId], references: [id])
+  department  Department? @relation(fields: [departmentId], references: [id])
+  client      Client?     @relation(fields: [clientId], references: [id])
+  tags        Tag[]       @relation("TaskTags")
+  timeEntries TimeEntry[]
+  histories   TaskHistory[]
+  comments    Comment[]
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([importance])
+  @@index([responsibleId])
+  @@index([departmentId])
+  @@index([clientId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model TimeEntry {
+  id              String    @id @default(cuid())
+  taskId          String
+  userId          String
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  durationSeconds Int?
+  createdAt       DateTime  @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([userId, endedAt])
+}
+
+model TaskHistory {
+  id        String        @id @default(cuid())
+  taskId    String
+  userId    String?
+  action    HistoryAction
+  field     String?
+  oldValue  String?
+  newValue  String?
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  task Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+  @@index([createdAt])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+}
+
+// Contador atômico para gerar o código amigável das tarefas (TF-000001).
+model Counter {
+  name  String @id
+  value Int    @default(0)
+}
